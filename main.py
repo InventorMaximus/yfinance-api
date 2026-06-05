@@ -52,6 +52,8 @@ def financials():
             'returnOnAssets':    info.get('returnOnAssets'),
             'sharesOutstanding': info.get('sharesOutstanding'),
             'bookValue':         info.get('bookValue'),
+            'sector':            info.get('sector'),
+            'industry':      info.get('industry'),
         })
     except Exception as e:
         return jsonify({'error': str(e), 'ticker': ticker, 'meldung_id': meldung_id}), 500
