@@ -4,6 +4,12 @@ import math
 
 app = Flask(__name__)
 
+HOLDER_BLACKLIST = {
+    'spreadex', 'winterflood', 'peel hunt', 'interactive brokers',
+    'hargreaves lansdown', 'ig group', 'etrade', 'td ameritrade',
+    'charles schwab', 'fidelity', 'vanguard', 'blackrock',
+}
+
 def clean(val):
     if val is None: return None
     if isinstance(val, float) and (math.isnan(val) or math.isinf(val)): return None
@@ -72,6 +78,38 @@ def all_data():
             'income':       df_to_dict(stock.financials),
             'cashflow':     df_to_dict(stock.cashflow),
         })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/holders')
+def holders_endpoint():
+    ticker = request.args.get('ticker', '')
+    if not ticker:
+        return jsonify({'error': 'No ticker provided'}), 400
+    try:
+        stock = yf.Ticker(ticker)
+        info  = stock.info
+
+        roster     = stock.insider_roster_holders
+        shares_out = info.get('sharesOutstanding') or 1
+
+        holders = []
+        if roster is not None and not roster.empty:
+            for _, row in roster.iterrows():
+                name = row.get('Name', '') or ''
+                if any(b in name.lower() for b in HOLDER_BLACKLIST):
+                    continue
+                shares = row.get('Shares Owned Directly', 0) or 0
+                holders.append({
+                    'name':             name,
+                    'shares':           int(shares),
+                    'stake_pct':        round(shares / shares_out * 100, 2),
+                    'last_transaction': row.get('Most Recent Transaction', ''),
+                    'last_date':        str(row.get('Latest Transaction Date', ''))[:10],
+                })
+        holders = sorted(holders, key=lambda x: x['stake_pct'], reverse=True)
+
+        return jsonify({'ticker': ticker, 'holders': holders})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -162,6 +200,28 @@ def dna():
         except Exception:
             cashflow = {}
 
+        # --- Holders ---
+        try:
+            roster     = stock.insider_roster_holders
+            shares_out = info.get('sharesOutstanding') or 1
+            holders    = []
+            if roster is not None and not roster.empty:
+                for _, row in roster.iterrows():
+                    name = row.get('Name', '') or ''
+                    if any(b in name.lower() for b in HOLDER_BLACKLIST):
+                        continue
+                    shares = row.get('Shares Owned Directly', 0) or 0
+                    holders.append({
+                        'name':             name,
+                        'shares':           int(shares),
+                        'stake_pct':        round(shares / shares_out * 100, 2),
+                        'last_transaction': row.get('Most Recent Transaction', ''),
+                        'last_date':        str(row.get('Latest Transaction Date', ''))[:10],
+                    })
+            holders = sorted(holders, key=lambda x: x['stake_pct'], reverse=True)
+        except Exception:
+            holders = []
+
         # --- DNA Status Check ---
         core_fields = [
             info.get('marketCap'),
@@ -231,30 +291,12 @@ def dna():
             },
 
             'history': history,
+
+            'holders': holders,
         })
 
     except Exception as e:
         return jsonify({'error': str(e), 'ticker': ticker}), 500
-
-@app.route('/holders')
-def holders():
-    ticker = request.args.get('ticker', '')
-    if not ticker:
-        return jsonify({'error': 'No ticker provided'}), 400
-    try:
-        stock = yf.Ticker(ticker)
-        
-        inst = stock.institutional_holders
-        major = stock.major_holders
-        insider = stock.insider_roster_holders
-        
-        return jsonify({
-            'institutional_holders': inst.to_dict('records') if inst is not None and not inst.empty else [],
-            'major_holders':         major.to_dict('records') if major is not None and not major.empty else {},
-            'insider_roster':        insider.to_dict('records') if insider is not None and not insider.empty else [],
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/health')
 def health():
