@@ -236,6 +236,26 @@ def dna():
     except Exception as e:
         return jsonify({'error': str(e), 'ticker': ticker}), 500
 
+@app.route('/holders')
+def holders():
+    ticker = request.args.get('ticker', '')
+    if not ticker:
+        return jsonify({'error': 'No ticker provided'}), 400
+    try:
+        stock = yf.Ticker(ticker)
+        
+        inst = stock.institutional_holders
+        major = stock.major_holders
+        insider = stock.insider_roster_holders
+        
+        return jsonify({
+            'institutional_holders': inst.to_dict('records') if inst is not None and not inst.empty else [],
+            'major_holders':         major.to_dict('records') if major is not None and not major.empty else {},
+            'insider_roster':        insider.to_dict('records') if insider is not None and not insider.empty else [],
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/health')
 def health():
     return jsonify({'status': 'ok'})
