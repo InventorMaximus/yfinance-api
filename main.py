@@ -86,24 +86,24 @@ def dna():
         info  = stock.info
 
         # --- Helpers ---
+                # --- Helpers ---
         def truncate(text, limit=300):
             if not text: return None
             return text[:limit] + '...' if len(text) > limit else text
 
+        def pct(val):
+            if val is None: return None
+            try:
+                return round(float(val) * 100, 1)
+            except (TypeError, ValueError):
+                return None
+
         def ratio(val):
-    if val is None: return None
-    try:
-        return round(float(val), 1)
-    except (TypeError, ValueError):
-        return None
-
-def pct(val):
-    if val is None: return None
-    try:
-        return round(float(val) * 100, 1)
-    except (TypeError, ValueError):
-        return None
-
+            if val is None: return None
+            try:
+                return round(float(val), 1)
+            except (TypeError, ValueError):
+                return None
         # --- Price History: 1 Jahr, wöchentlich ---
         try:
             hist    = stock.history(period='1y', interval='1wk')
