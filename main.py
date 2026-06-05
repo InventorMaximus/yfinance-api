@@ -75,6 +75,143 @@ def all_data():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/dna')
+def dna():
+    ticker = request.args.get('ticker', '')
+    if not ticker:
+        return jsonify({'error': 'No ticker provided'}), 400
+
+    try:
+        stock = yf.Ticker(ticker)
+        info  = stock.info
+
+        # --- Helpers ---
+        def truncate(text, limit=300):
+            if not text: return None
+            return text[:limit] + '...' if len(text) > limit else text
+
+        def pct(val):
+            if val is None: return None
+            return round(val * 100, 1)
+
+        def ratio(val):
+            if val is None: return None
+            return round(val, 1)
+
+        # --- Price History: 1 Jahr, wöchentlich ---
+        try:
+            hist = stock.history(period='1y', interval='1wk')
+            history = [
+                {
+                    'date':   str(row.Index.date()),
+                    'close':  round(row.Close, 4) if row.Close else None,
+                    'volume': int(row.Volume)     if row.Volume else None,
+                }
+                for row in hist.itertuples()
+                if row.Close and not math.isnan(row.Close)
+            ]
+        except Exception:
+            history = []
+
+        # --- Annual Statements: 3 Jahre, nur Income + Cashflow ---
+        def parse_statement(df, keys):
+            if df is None or df.empty:
+                return {}
+            result = {}
+            cols = sorted(df.columns, reverse=True)[:3]  # max 3 Jahre
+            for col in cols:
+                year = str(col.year)
+                result[year] = {}
+                for k in keys:
+                    val = df.loc[k, col] if k in df.index else None
+                    result[year][k] = clean(val)
+            return result
+
+        income_keys = [
+            'Total Revenue',
+            'Gross Profit',
+            'Operating Income',
+            'EBITDA',
+            'Net Income',
+        ]
+        cashflow_keys = [
+            'Operating Cash Flow',
+            'Free Cash Flow',
+            'Capital Expenditure',
+        ]
+
+        try:
+            income   = parse_statement(stock.financials,  income_keys)
+        except Exception:
+            income   = {}
+
+        try:
+            cashflow = parse_statement(stock.cashflow, cashflow_keys)
+        except Exception:
+            cashflow = {}
+
+        return jsonify({
+            'ticker': ticker,
+
+            # Block 1: Company Identity
+            'company': {
+                'name':        info.get('shortName'),
+                'sector':      info.get('sector'),
+                'industry':    info.get('industry'),
+                'employees':   info.get('fullTimeEmployees'),
+                'website':     info.get('website'),
+                'description': truncate(info.get('longBusinessSummary'), 300),
+            },
+
+            # Block 2: Snapshot
+            'snapshot': {
+                'marketCap':       info.get('marketCap'),
+                'currentPrice':    info.get('currentPrice'),
+                'fiftyTwoWeekHigh': info.get('fiftyTwoWeekHigh'),
+                'fiftyTwoWeekLow':  info.get('fiftyTwoWeekLow'),
+                'beta':            ratio(info.get('beta')),
+                'insidersPct':     pct(info.get('heldPercentInsiders')),
+                'institutionsPct': pct(info.get('heldPercentInstitutions')),
+            },
+
+            # Block 3: Valuation Multiples
+            'multiples': {
+                'trailingPE':       ratio(info.get('trailingPE')),
+                'forwardPE':        ratio(info.get('forwardPE')),
+                'evToEbitda':       ratio(info.get('enterpriseToEbitda')),
+                'evToRevenue':      ratio(info.get('enterpriseToRevenue')),
+                'priceToBook':      ratio(info.get('priceToBook')),
+                'pegRatio':         ratio(info.get('pegRatio')),
+            },
+
+            # Block 4: Financials Snapshot
+            'financials': {
+                'enterpriseValue': info.get('enterpriseValue'),
+                'totalRevenue':    info.get('totalRevenue'),
+                'ebitda':          info.get('ebitda'),
+                'ebit':            info.get('ebit'),
+                'netIncome':       info.get('netIncomeToCommon'),
+                'freeCashFlow':    info.get('freeCashflow'),
+                'operatingCF':     info.get('operatingCashflow'),
+                'totalDebt':       info.get('totalDebt'),
+                'totalCash':       info.get('totalCash'),
+                'grossMargins':    pct(info.get('grossMargins')),
+                'operatingMargins':pct(info.get('operatingMargins')),
+            },
+
+            # Block 5: Historical Statements (3 Jahre)
+            'statements': {
+                'income':   income,
+                'cashflow': cashflow,
+            },
+
+            # Block 6: Price History (1 Jahr, wöchentlich)
+            'history': history,
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e), 'ticker': ticker}), 500
+
 @app.route('/health')
 def health():
     return jsonify({'status': 'ok'})
