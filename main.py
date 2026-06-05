@@ -6,7 +6,7 @@ app = Flask(__name__)
 
 def clean(val):
     if val is None: return None
-    if isinstance(val, float) and math.isnan(val): return None
+    if isinstance(val, float) and (math.isnan(val) or math.isinf(val)): return None
     return val
 
 def df_to_dict(df):
@@ -86,7 +86,6 @@ def dna():
         info  = stock.info
 
         # --- Helpers ---
-                # --- Helpers ---
         def truncate(text, limit=300):
             if not text: return None
             return text[:limit] + '...' if len(text) > limit else text
@@ -94,16 +93,21 @@ def dna():
         def pct(val):
             if val is None: return None
             try:
-                return round(float(val) * 100, 1)
+                f = float(val)
+                if math.isnan(f) or math.isinf(f): return None
+                return round(f * 100, 1)
             except (TypeError, ValueError):
                 return None
 
         def ratio(val):
             if val is None: return None
             try:
-                return round(float(val), 1)
+                f = float(val)
+                if math.isnan(f) or math.isinf(f): return None
+                return round(f, 1)
             except (TypeError, ValueError):
                 return None
+
         # --- Price History: 1 Jahr, wöchentlich ---
         try:
             hist    = stock.history(period='1y', interval='1wk')
@@ -129,9 +133,8 @@ def dna():
                 year = str(col.year)
                 row  = {}
                 for k in keys:
-                    val      = df.loc[k, col] if k in df.index else None
-                    row[k]   = clean(val)
-                # Nur Jahr reinschreiben wenn mind. 1 Wert nicht null
+                    val    = df.loc[k, col] if k in df.index else None
+                    row[k] = clean(val)
                 if any(v is not None for v in row.values()):
                     result[year] = row
             return result
@@ -180,7 +183,6 @@ def dna():
             'ticker':     ticker,
             'dna_status': dna_status,
 
-            # Block 1: Company Identity
             'company': {
                 'name':        info.get('shortName'),
                 'sector':      info.get('sector'),
@@ -190,7 +192,6 @@ def dna():
                 'description': truncate(info.get('longBusinessSummary'), 300),
             },
 
-            # Block 2: Snapshot
             'snapshot': {
                 'marketCap':        info.get('marketCap'),
                 'currentPrice':     info.get('currentPrice'),
@@ -201,7 +202,6 @@ def dna():
                 'institutionsPct':  pct(info.get('heldPercentInstitutions')),
             },
 
-            # Block 3: Valuation Multiples
             'multiples': {
                 'trailingPE':  ratio(info.get('trailingPE')),
                 'forwardPE':   ratio(info.get('forwardPE')),
@@ -211,7 +211,6 @@ def dna():
                 'pegRatio':    ratio(info.get('pegRatio')),
             },
 
-            # Block 4: Financials Snapshot
             'financials': {
                 'enterpriseValue':  info.get('enterpriseValue'),
                 'totalRevenue':     info.get('totalRevenue'),
@@ -226,13 +225,11 @@ def dna():
                 'operatingMargins': pct(info.get('operatingMargins')),
             },
 
-            # Block 5: Historical Statements (3 Jahre, leere Jahre gefiltert)
             'statements': {
                 'income':   income,
                 'cashflow': cashflow,
             },
 
-            # Block 6: Price History (1 Jahr, wöchentlich)
             'history': history,
         })
 
