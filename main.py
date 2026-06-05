@@ -90,13 +90,19 @@ def dna():
             if not text: return None
             return text[:limit] + '...' if len(text) > limit else text
 
-        def pct(val):
-            if val is None: return None
-            return round(val * 100, 1)
-
         def ratio(val):
-            if val is None: return None
-            return round(val, 1)
+    if val is None: return None
+    try:
+        return round(float(val), 1)
+    except (TypeError, ValueError):
+        return None
+
+def pct(val):
+    if val is None: return None
+    try:
+        return round(float(val) * 100, 1)
+    except (TypeError, ValueError):
+        return None
 
         # --- Price History: 1 Jahr, wöchentlich ---
         try:
