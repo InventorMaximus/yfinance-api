@@ -20,7 +20,7 @@ def df_to_dict(df):
 
 @app.route('/financials')
 def financials():
-    ticker = request.args.get('ticker', '')
+    ticker     = request.args.get('ticker', '')
     meldung_id = request.args.get('meldung_id', '')
 
     if not ticker:
@@ -28,7 +28,7 @@ def financials():
 
     try:
         stock = yf.Ticker(ticker)
-        info = stock.info
+        info  = stock.info
         return jsonify({
             'meldung_id':        meldung_id,
             'ticker':            ticker,
@@ -53,7 +53,7 @@ def financials():
             'sharesOutstanding': info.get('sharesOutstanding'),
             'bookValue':         info.get('bookValue'),
             'sector':            info.get('sector'),
-            'industry':      info.get('industry'),
+            'industry':          info.get('industry'),
         })
     except Exception as e:
         return jsonify({'error': str(e), 'ticker': ticker, 'meldung_id': meldung_id}), 500
@@ -65,7 +65,7 @@ def all_data():
         return jsonify({'error': 'No ticker provided'}), 400
     try:
         stock = yf.Ticker(ticker)
-        info = stock.info
+        info  = stock.info
         return jsonify({
             'info':         info,
             'balanceSheet': df_to_dict(stock.balance_sheet),
@@ -100,7 +100,7 @@ def dna():
 
         # --- Price History: 1 Jahr, wöchentlich ---
         try:
-            hist = stock.history(period='1y', interval='1wk')
+            hist    = stock.history(period='1y', interval='1wk')
             history = [
                 {
                     'date':   str(row.Index.date()),
@@ -118,13 +118,16 @@ def dna():
             if df is None or df.empty:
                 return {}
             result = {}
-            cols = sorted(df.columns, reverse=True)[:3]  # max 3 Jahre
+            cols = sorted(df.columns, reverse=True)[:3]
             for col in cols:
                 year = str(col.year)
-                result[year] = {}
+                row  = {}
                 for k in keys:
-                    val = df.loc[k, col] if k in df.index else None
-                    result[year][k] = clean(val)
+                    val      = df.loc[k, col] if k in df.index else None
+                    row[k]   = clean(val)
+                # Nur Jahr reinschreiben wenn mind. 1 Wert nicht null
+                if any(v is not None for v in row.values()):
+                    result[year] = row
             return result
 
         income_keys = [
@@ -141,7 +144,7 @@ def dna():
         ]
 
         try:
-            income   = parse_statement(stock.financials,  income_keys)
+            income   = parse_statement(stock.financials, income_keys)
         except Exception:
             income   = {}
 
@@ -150,8 +153,26 @@ def dna():
         except Exception:
             cashflow = {}
 
+        # --- DNA Status Check ---
+        core_fields = [
+            info.get('marketCap'),
+            info.get('totalRevenue'),
+            info.get('currentPrice'),
+        ]
+        has_core       = any(f is not None for f in core_fields)
+        has_history    = len(history) > 0
+        has_statements = bool(income or cashflow)
+
+        if not has_core and not has_history and not has_statements:
+            dna_status = 'no_data'
+        elif not has_core:
+            dna_status = 'partial'
+        else:
+            dna_status = 'ok'
+
         return jsonify({
-            'ticker': ticker,
+            'ticker':     ticker,
+            'dna_status': dna_status,
 
             # Block 1: Company Identity
             'company': {
@@ -165,41 +186,41 @@ def dna():
 
             # Block 2: Snapshot
             'snapshot': {
-                'marketCap':       info.get('marketCap'),
-                'currentPrice':    info.get('currentPrice'),
+                'marketCap':        info.get('marketCap'),
+                'currentPrice':     info.get('currentPrice'),
                 'fiftyTwoWeekHigh': info.get('fiftyTwoWeekHigh'),
                 'fiftyTwoWeekLow':  info.get('fiftyTwoWeekLow'),
-                'beta':            ratio(info.get('beta')),
-                'insidersPct':     pct(info.get('heldPercentInsiders')),
-                'institutionsPct': pct(info.get('heldPercentInstitutions')),
+                'beta':             ratio(info.get('beta')),
+                'insidersPct':      pct(info.get('heldPercentInsiders')),
+                'institutionsPct':  pct(info.get('heldPercentInstitutions')),
             },
 
             # Block 3: Valuation Multiples
             'multiples': {
-                'trailingPE':       ratio(info.get('trailingPE')),
-                'forwardPE':        ratio(info.get('forwardPE')),
-                'evToEbitda':       ratio(info.get('enterpriseToEbitda')),
-                'evToRevenue':      ratio(info.get('enterpriseToRevenue')),
-                'priceToBook':      ratio(info.get('priceToBook')),
-                'pegRatio':         ratio(info.get('pegRatio')),
+                'trailingPE':  ratio(info.get('trailingPE')),
+                'forwardPE':   ratio(info.get('forwardPE')),
+                'evToEbitda':  ratio(info.get('enterpriseToEbitda')),
+                'evToRevenue': ratio(info.get('enterpriseToRevenue')),
+                'priceToBook': ratio(info.get('priceToBook')),
+                'pegRatio':    ratio(info.get('pegRatio')),
             },
 
             # Block 4: Financials Snapshot
             'financials': {
-                'enterpriseValue': info.get('enterpriseValue'),
-                'totalRevenue':    info.get('totalRevenue'),
-                'ebitda':          info.get('ebitda'),
-                'ebit':            info.get('ebit'),
-                'netIncome':       info.get('netIncomeToCommon'),
-                'freeCashFlow':    info.get('freeCashflow'),
-                'operatingCF':     info.get('operatingCashflow'),
-                'totalDebt':       info.get('totalDebt'),
-                'totalCash':       info.get('totalCash'),
-                'grossMargins':    pct(info.get('grossMargins')),
-                'operatingMargins':pct(info.get('operatingMargins')),
+                'enterpriseValue':  info.get('enterpriseValue'),
+                'totalRevenue':     info.get('totalRevenue'),
+                'ebitda':           info.get('ebitda'),
+                'ebit':             info.get('ebit'),
+                'netIncome':        info.get('netIncomeToCommon'),
+                'freeCashFlow':     info.get('freeCashflow'),
+                'operatingCF':      info.get('operatingCashflow'),
+                'totalDebt':        info.get('totalDebt'),
+                'totalCash':        info.get('totalCash'),
+                'grossMargins':     pct(info.get('grossMargins')),
+                'operatingMargins': pct(info.get('operatingMargins')),
             },
 
-            # Block 5: Historical Statements (3 Jahre)
+            # Block 5: Historical Statements (3 Jahre, leere Jahre gefiltert)
             'statements': {
                 'income':   income,
                 'cashflow': cashflow,
